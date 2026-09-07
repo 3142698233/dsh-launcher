@@ -1,0 +1,16 @@
+# 运行时日志（每次运行自动生成）
+logs/
+
+# 归档的历史文件（与程序无关）
+_archive/
+
+# Playwright MCP 调试记录（运行时自动生成）
+.playwright-mcp/
+
+# Windows 系统文件
+Thumbs.db
+Desktop.ini
+
+# 其他临时文件
+*.pid
+*.tmp
