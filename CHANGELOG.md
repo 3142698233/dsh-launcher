@@ -2,6 +2,13 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/) 与 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 格式。
 
+## [v1.2.0] - 2026-09-08
+
+### 新增
+
+- **托盘自身更新检查**：启动后后台查询 GitHub Release 最新版本（`api.github.com/repos/3142698233/dsh-launcher/releases/latest`），发现新版本时气泡提示，点击提示直接打开 GitHub Release 下载页；网络不可用或无新版本时静默，不打扰使用
+- 强制启用 TLS 1.2（GitHub API 要求；.NET 4.0 默认仅 TLS 1.0）
+
 ## [v1.1.0] - 2026-09-08
 
 首个公开发布版本（Windows 桌面托盘启动器）。此前为本地开发/脚本阶段，未单独发布。

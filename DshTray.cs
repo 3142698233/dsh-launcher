@@ -6,7 +6,7 @@
 //    1) 启动/更新服务器时显示一个终端（黑窗口），可看到版本检查/更新进度与错误
 //    2) 服务器就绪（端口开始监听）后，终端窗口自动隐藏，服务器继续后台运行
 //    3) 输出实时写入 logs\dsh-stdout.log；启动失败会弹窗显示错误
-//  版本：1.1.0.0（真实版本对比更新 + 全局安装定位 + --no-open）
+//  版本：1.2.0.0（真实版本对比更新 + 全局安装定位 + --no-open + 托盘自身更新检查）
 // =====================================================================
 using System;
 using System.Collections.Generic;
@@ -14,6 +14,7 @@ using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.IO;
+using System.Net;
 using System.Net.Sockets;
 using System.Reflection;
 using System.Runtime.InteropServices;
@@ -25,9 +26,9 @@ using Microsoft.Win32;
 [assembly: AssemblyTitle("DSH Web Tray Launcher")]
 [assembly: AssemblyProduct("DshTray")]
 [assembly: AssemblyDescription("DSH Web 后台启动器（系统托盘）")]
-[assembly: AssemblyVersion("1.1.0.0")]
-[assembly: AssemblyFileVersion("1.1.0.0")]
-[assembly: AssemblyInformationalVersion("1.1.0.0")]
+[assembly: AssemblyVersion("1.2.0.0")]
+[assembly: AssemblyFileVersion("1.2.0.0")]
+[assembly: AssemblyInformationalVersion("1.2.0.0")]
 
 namespace DshWebTray
 {
@@ -38,6 +39,12 @@ namespace DshWebTray
         private static string LogDir, StdoutLog, UpdateLog, PidFile, TrayLog;
         private const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
         private const string RunValueName = "DSHWebTray";
+
+        // 托盘自身更新检查（GitHub Release）
+        private const string GithubRepo = "3142698233/dsh-launcher";
+        private const string GithubReleaseApi = "https://api.github.com/repos/3142698233/dsh-launcher/releases/latest";
+        private const string GithubReleasePage = "https://github.com/3142698233/dsh-launcher/releases/latest";
+        private static string _latestReleaseTag; // 检测到的新版本 tag，供气泡点击打开下载页
 
         private static Mutex _mutex;
         private static NotifyIcon _notify;
@@ -99,6 +106,9 @@ namespace DshWebTray
                 Application.EnableVisualStyles();
                 Application.SetCompatibleTextRenderingDefault(false);
 
+                // GitHub API 要求 TLS 1.2+，而 .NET 4.0 默认仅 TLS 1.0（枚举值 3072 = Tls12）
+                try { ServicePointManager.SecurityProtocol = (SecurityProtocolType)3072; } catch { }
+
                 _iconRunning = CreateIcon(Color.FromArgb(30, 168, 88));
                 _iconStopped = CreateIcon(Color.FromArgb(140, 140, 140));
 
@@ -109,6 +119,11 @@ namespace DshWebTray
                 StartServer();
                 _timer.Start();
                 UpdateStatus();
+
+                // 后台检查 GitHub Release 是否有托盘新版本（不阻塞启动，失败静默）
+                Thread updater = new Thread(CheckGithubReleaseUpdate);
+                updater.IsBackground = true;
+                updater.Start();
 
                 Application.Run();
 
@@ -190,6 +205,15 @@ namespace DshWebTray
             _notify.MouseDoubleClick += (s, e) =>
             {
                 if (e.Button == MouseButtons.Left) { try { Process.Start(GetUiUrl()); } catch { } }
+            };
+
+            // 气泡点击：若是"发现新版本"提示，则打开 GitHub Release 下载页
+            _notify.BalloonTipClicked += (s, e) =>
+            {
+                if (!string.IsNullOrEmpty(_latestReleaseTag))
+                {
+                    try { Process.Start(GithubReleasePage); } catch { }
+                }
             };
 
             _timer = new System.Windows.Forms.Timer();
@@ -900,6 +924,89 @@ namespace DshWebTray
                 return v == null ? "?" : v.ToString();
             }
             catch { return "?"; }
+        }
+
+        // ==================== 托盘自身更新检查（GitHub Release） ====================
+        // 启动后延迟执行：查询 GitHub 最新 Release tag，与本地版本对比，
+        // 有新版则气泡提示（点击气泡打开下载页）；网络失败/无新版时静默，不打扰用户。
+        private static void CheckGithubReleaseUpdate()
+        {
+            try
+            {
+                Thread.Sleep(6000); // 延迟到启动流程基本稳定，避免与启动气泡重叠
+                string tag = QueryLatestGithubTag();
+                if (string.IsNullOrEmpty(tag))
+                {
+                    Log("GitHub 检查：无法获取最新版本（可能无网络），跳过");
+                    return;
+                }
+                string remote = tag.TrimStart('v', 'V');
+                string local = GetVersion();
+                if (string.IsNullOrEmpty(remote) || CompareVersions(remote, local) <= 0)
+                {
+                    Log("GitHub 检查：已是最新版本（本地 " + local + " = Release " + tag + "）");
+                    return;
+                }
+                _latestReleaseTag = tag;
+                Log("GitHub 检查：发现新版本 " + tag + "（本地 " + local + "），提示用户");
+                ShowBalloon("DSH Web 托盘有新版本 " + tag,
+                    "点击此提示打开 GitHub Release 页面下载新版 DshTray.exe。");
+            }
+            catch (Exception ex)
+            {
+                Log("GitHub 检查异常: " + ex.Message);
+            }
+        }
+
+        // 查询 GitHub Release 最新 tag（10s 超时；GitHub API 要求 User-Agent）
+        private static string QueryLatestGithubTag()
+        {
+            try
+            {
+                var req = (HttpWebRequest)WebRequest.Create(GithubReleaseApi);
+                req.Method = "GET";
+                req.UserAgent = "DshTray/" + GetVersion();
+                req.Timeout = 10000;
+                req.ReadWriteTimeout = 10000;
+                using (HttpWebResponse resp = (HttpWebResponse)req.GetResponse())
+                using (StreamReader sr = new StreamReader(resp.GetResponseStream(), Encoding.UTF8))
+                {
+                    string json = sr.ReadToEnd();
+                    int i = json.IndexOf("\"tag_name\"", StringComparison.OrdinalIgnoreCase);
+                    if (i < 0) return null;
+                    int c = json.IndexOf(':', i);
+                    int s = json.IndexOf('"', c);
+                    int e = json.IndexOf('"', s + 1);
+                    if (s < 0 || e <= s) return null;
+                    string tag = json.Substring(s + 1, e - s - 1).Trim();
+                    return tag.Length > 0 ? tag : null;
+                }
+            }
+            catch { return null; }
+        }
+
+        // 比较两个点分版本字符串（"1.1.0" 与 "1.1.0.0" 视为相等；缺失段视为 0）
+        private static int CompareVersions(string a, string b)
+        {
+            int[] pa = ParseVersion(a), pb = ParseVersion(b);
+            for (int i = 0; i < 4; i++)
+            {
+                int x = i < pa.Length ? pa[i] : 0;
+                int y = i < pb.Length ? pb[i] : 0;
+                if (x != y) return x < y ? -1 : 1;
+            }
+            return 0;
+        }
+
+        private static int[] ParseVersion(string s)
+        {
+            var list = new List<int>();
+            foreach (string part in s.Split('.'))
+            {
+                int n;
+                if (int.TryParse(part, out n)) list.Add(n);
+            }
+            return list.ToArray();
         }
 
         // 界面地址：dsh 每次启动都会生成随机 token，必须带 token 才能访问。

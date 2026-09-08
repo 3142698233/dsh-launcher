@@ -1,6 +1,6 @@
 # DSH Web 后台启动器（DshTray）
 
-> **v1.1.0** · Windows 系统托盘程序 · [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的 Web UI 常驻启动器
+> **v1.2.0** · Windows 系统托盘程序 · [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的 Web UI 常驻启动器
 
 DshTray 是一个原生 WinForms 托盘程序，让 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的 Web UI（`dsh web`）像普通软件一样在 Windows 后台常驻运行——**没有黑窗口、开机自启、崩溃可重启、更新不打断**。
 
@@ -10,6 +10,7 @@ DshTray 是一个原生 WinForms 托盘程序，让 [DeepSeek Harness](https://g
 | --- | --- |
 | 🖥️ 托盘常驻 | 平时无任何窗口，仅任务栏右下角托盘图标（绿 = 运行中 / 灰 = 已停止） |
 | 🔄 两阶段启动 | 更新与启动完全分离，**更新失败绝不影响启动**（见下方工作原理） |
+| ⬆️ 自身更新检查 | 启动时后台检查 GitHub Release，发现新版气泡提示，点击提示打开下载页 |
 | 🔐 Token 感知 | dsh 每次启动生成随机登录 token，托盘打开界面时自动附带，无需手动复制 |
 | 🚀 快速就绪 | 直接用已安装的 dsh 程序启动服务器，不联网、不经 npx，启动仅需 3 秒左右 |
 | 📁 日志完整 | 服务器输出、更新记录、操作日志全部落盘 `logs\`，可随时查看 |
